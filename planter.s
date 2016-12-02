@@ -23,13 +23,13 @@ at_start:
 	
 	not $s0, $s0		#gives us our desired coords
 	not $s1, $s1
-	li $s2, 270
-	li $s3, 285
+	li $s2, 240
+	li $s3, 255
 	
-	mul $s0, $s0, $s2	#desired_x*(270) to get pixel
+	mul $s0, $s0, $s2	#desired_x*(240) to get pixel
 	mul $s1, $s0, $s1	#same with y coord.
 	sub $s0, $s3, $s2
-	sub $s1, $s3, $s2	#285 - (desired_y * 270)
+	sub $s1, $s3, $s2	#255 - (desired_y * 240)
 
 
 planting:

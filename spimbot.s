@@ -50,6 +50,8 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 .data
 # data things go here
 puzzlebit:	.byte 0
+at_dest:	.byte 0
+quad_bits:	.byte 0
 
 .align 2
 tilearray:	.space 1600
@@ -63,35 +65,53 @@ main:
 	li	$t0, REQUEST_PUZZLE_INT_MASK
 	or	$t0, $t0, 1
 	or	$t0, $t0, ON_FIRE_MASK
+	or	$t0, $t0, TIMER_MASK
 	or	$t0, $t0, MAX_GROWTH_INT_MASK
 	mtc0	$t0, $12
 
-	li	$t0, 2
-	sw	$t0, SET_RESOURCE_TYPE
+	li	$a0, 30
+	li	$a1, 30
 
-	la	$t0, puzzlestruct
-	sw	$t0, REQUEST_PUZZLE
-	la	$t0, puzzlebit
-
-	lw	$t2, GET_NUM_FIRE_STARTERS
+	jal	movexy
 
 wait:
-	lb	$t1, 0($t0)
-	beq	$t1, 1, solve
 	j	wait
 
-solve:
-	la	$a0, solutionstruct
-	la	$a1, puzzlestruct
-	jal	recursive_backtracking
+#goagain:
+#	li	$a0, 30
+#	li	$a1, 30
+#
+#	jal	movexy
+#
+#waitmore:
+#	j	waitmore
 
-	la	$t0, solutionstruct
-	sw	$t0, SUBMIT_SOLUTION
-	li	$t1, 0
-	sw	$t1, puzzlebit
-
-readseeds:
-	lw	$t2, GET_NUM_FIRE_STARTERS
-	j	readseeds
+#	li	$t0, 2
+#	sw	$t0, SET_RESOURCE_TYPE
+#
+#	la	$t0, puzzlestruct
+#	sw	$t0, REQUEST_PUZZLE
+#	la	$t0, puzzlebit
+#
+#	lw	$t2, GET_NUM_FIRE_STARTERS
+#
+#wait:
+#	lb	$t1, 0($t0)
+#	beq	$t1, 1, solve
+#	j	wait
+#
+#solve:
+#	la	$a0, solutionstruct
+#	la	$a1, puzzlestruct
+#	jal	recursive_backtracking
+#
+#	la	$t0, solutionstruct
+#	sw	$t0, SUBMIT_SOLUTION
+#	li	$t1, 0
+#	sw	$t1, puzzlebit
+#
+#readseeds:
+#	lw	$t2, GET_NUM_FIRE_STARTERS
+#	j	readseeds
 
 	j	main

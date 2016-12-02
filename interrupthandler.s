@@ -20,6 +20,9 @@ interrupt_dispatch:
 	and	$a0, $k0, REQUEST_PUZZLE_INT_MASK
 	bne	$a0, $0, puzzle_interrupt
 
+	and	$a0, $k0, TIMER_MASK
+	bne	$a0, $0, timer_interrupt
+
 	j	done
 
 fire_interrupt:
@@ -40,6 +43,13 @@ puzzle_interrupt:
 	la	$k0, puzzlebit
 	li	$a0, 1
 	sb	$a0, 0($k0)
+	j	interrupt_dispatch
+
+timer_interrupt:
+	sw	$0, TIMER_ACK
+	sw	$0, VELOCITY
+	li	$a0, 1
+	sb	$a0, at_dest
 	j	interrupt_dispatch
 
 done:

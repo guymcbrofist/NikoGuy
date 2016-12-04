@@ -35,6 +35,10 @@ SET_RESOURCE_TYPE     = 0xffff00dc
 REQUEST_PUZZLE        = 0xffff00d0
 SUBMIT_SOLUTION       = 0xffff00d4
 
+WATER_RESOURCE        = 0
+SEED_RESOURCE         = 1
+FIRE_RESOURCE         = 2
+
 # interrupt constants
 BONK_MASK               = 0x1000
 BONK_ACK                = 0xffff0060
@@ -49,9 +53,9 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 
 .data
 # data things go here
-puzzlebit:	.byte 0
-at_dest:	.byte 0
-quad_bits:	.byte 0
+puzzlebit:	.word 0
+at_dest:	.word 0
+quad_bits:	.word 0
 
 .align 2
 tilearray:	.space 1600
@@ -69,49 +73,67 @@ main:
 	or	$t0, $t0, MAX_GROWTH_INT_MASK
 	mtc0	$t0, $12
 
-	li	$a0, 30
-	li	$a1, 30
-
+	li	$a0, 15
+	li	$a1, 15
 	jal	movexy
 
-wait:
-	j	wait
+	li	$a0, SEED_RESOURCE
+	jal	request_resource
 
-#goagain:
-#	li	$a0, 30
-#	li	$a1, 30
-#
-#	jal	movexy
-#
-#waitmore:
-#	j	waitmore
+loop:
+	lb	$t2, puzzlebit
+	bnez	$t2, go
+	j	loop
 
-#	li	$t0, 2
-#	sw	$t0, SET_RESOURCE_TYPE
-#
-#	la	$t0, puzzlestruct
-#	sw	$t0, REQUEST_PUZZLE
-#	la	$t0, puzzlebit
-#
-#	lw	$t2, GET_NUM_FIRE_STARTERS
-#
-#wait:
-#	lb	$t1, 0($t0)
-#	beq	$t1, 1, solve
-#	j	wait
-#
-#solve:
-#	la	$a0, solutionstruct
-#	la	$a1, puzzlestruct
-#	jal	recursive_backtracking
-#
-#	la	$t0, solutionstruct
-#	sw	$t0, SUBMIT_SOLUTION
-#	li	$t1, 0
-#	sw	$t1, puzzlebit
-#
-#readseeds:
-#	lw	$t2, GET_NUM_FIRE_STARTERS
-#	j	readseeds
+go:
+	jal	solve_puzzle
+	jal	clear_solution
+	lb	$t0, at_dest
+	bnez	$t0, leave
+	li	$a0, SEED_RESOURCE
+	jal	request_resource
+	j	loop
+leave:
+	li	$a0, 255
+	li	$a1, 255
+	jal	movexy
+
+loop2:
+	j	loop2
 
 	j	main
+
+request_resource:
+	sw	$a0, SET_RESOURCE_TYPE
+	la	$a0, puzzlestruct
+	sw	$a0, REQUEST_PUZZLE
+	jr	$ra
+
+solve_puzzle:
+	sub	$sp, $sp, 4
+	sw	$ra, 0($sp)
+
+	la	$a0, solutionstruct
+	la	$a1, puzzlestruct
+	jal	recursive_backtracking
+	la	$t0, solutionstruct
+	sw	$t0, SUBMIT_SOLUTION
+	sw	$0, puzzlebit
+
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 4
+	jr	$ra
+
+clear_solution:
+	la	$t1, solutionstruct
+	add	$t0, $t1, 328
+cs_loop:
+	sw	$0, 0($t1)
+	add	$t1, $t1, 4
+	blt	$t1, $t0, cs_loop
+	jr	$ra
+
+look_at_enemy:
+	lh	$t0, OTHER_BOT_X
+	lh	$t1, OTHER_BOT_Y
+	jr	$ra

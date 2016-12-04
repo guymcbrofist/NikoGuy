@@ -1,4 +1,5 @@
 .data
+.align 2
 three:	.float	3.0
 five:	.float	5.0
 PI:	.float	3.141592

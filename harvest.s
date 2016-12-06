@@ -1,45 +1,53 @@
-max_growth_interrupt:
-	jal 	harvester
-	sw 	$a1, MAX_GROWTH_ACK
-	j	interrupt_dispatch
+harvest:	
+	sub	$sp, $sp, 4
+	sw	$ra, 0($sp)
 	
-harvester:	
-	sub $sp, $sp, 12
-	sw $ra, 0($sp)
-	sw $a0, 4($sp)
-	sw $a1, 8($sp)
-	
-	lw $t0, MAX_GROWTH_TILE
-	div $t0, $t0, 10
-	mfhi $a0		#mag_growth_tile % 10 = x-coord
-	mflo $a1		#max_growth_tile / 10 = y-coord
+	#TODO:	Write loop that finds max grown tiles
+hrvst_scan_begin:
+	la	$t0, tilearray
+	sw	$t0, TILE_SCAN
+	li	$t1, 0
+hrvst_scan:
+	lw	$t2, 4($t0)
+	bnez	$t2, hrvst_scan_bad_tile
+	lw	$t2, 8($t0)
+	blt	$t2, 512, hrvst_scan_bad_tile
+	j	hrvst_scan_done
+hrvst_scan_bad_tile:
+	add	$t0, $t0, 16
+	add	$t1, $t1, 1
+	blt	$t1, 100, hrvst_scan
+	j	hrvst_return
+hrvst_scan_done:
+	li	$t0, 10
+	div	$t1, $t0
+	mfhi	$t1
+	mflo	$t2
 
-	mul $a0, $a0, 30
-	add $a0, $a0, 15	#obtain x pixel
+	mul	$t1, $t1, 30
+	add	$a0, $t1, 15	# X pixel coord of plant
 
-	mul $a1, $a1, 30
-	add $a1, $a1, 15	#obtain y pixel
+	mul	$t2, $t2, 30
+	add	$a1, $t2, 15	# Y pixel coord of plant
 
-	jal movexy
+	jal	movexy
 
-check_bit:
-	lb $t1, at_dest
-	bne $t1, 0, check_bit
+	li	$a0, -1
+	jal	gather
 
-conquer:
-	sw $0, HARVEST_TILE	#harvest
+	sw	$0, HARVEST_TILE	#harvest
 
-	#no checking for seed number here, we take care of taht
+	#no checking for seed number here, we take care of that
 	#in the main file
-	sw $0, SEED_TILE 	#plant
+	sw	$0, SEED_TILE 	#plant
 
-	li $t0, 10		#water
-	sw $t0, WATER_TILE
+	li	$t0, 10		#water
+	sw	$t0, WATER_TILE
+	j	hrvst_scan_begin
 
-	sub $sp, $sp, 12
-	sw $ra, 0($sp)
-	sw $a0, 4($sp)
-	sw $a1, 8($sp)
+hrvst_return:
+	lw $ra, 0($sp)
+	add $sp, $sp, 4
 
 	jr $ra
 	

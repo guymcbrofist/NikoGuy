@@ -17,6 +17,9 @@ interrupt_dispatch:
 	and	$a0, $k0, ON_FIRE_MASK
 	bne	$a0, $0, fire_interrupt
 
+	and	$a0, $k0, MAX_GROWTH_INT_MASK
+	bne	$a0, $0, max_growth_interrupt
+
 	and	$a0, $k0, REQUEST_PUZZLE_INT_MASK
 	bne	$a0, $0, puzzle_interrupt
 
@@ -27,15 +30,19 @@ interrupt_dispatch:
 
 fire_interrupt:
 	sw	$0, ON_FIRE_ACK
-	lb	$a1, num_fires
+	lw	$a1, firesstruct
 	add	$a1, $a1, 1
-	sb	$a1, num_fires
-	sub	$a1, $a1, 1
-	sll	$a1, $a1, 2
-	la	$k0, fire_xy
-	add	$a1, $a1, $k0
-	lw	$a0, GET_FIRE_LOC
-	sw	$a0, 0($a1)
+	la	$a0, firesstruct
+	add	$a0, $a0, $a1
+	sw	$a1, firesstruct
+	lw	$a1, GET_FIRE_LOC
+	sw	$a1, 0($a0)
+	j	interrupt_dispatch
+
+max_growth_interrupt:
+	sw	$0, MAX_GROWTH_ACK
+	li	$a0, 1
+	sw	$a0, max_plant
 	j	interrupt_dispatch
 
 puzzle_interrupt:

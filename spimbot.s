@@ -53,17 +53,21 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 
 .data
 # data things go here
-have_puzzle:	.word 0
-wait_puzzle:	.word 0
-zero_solution:  .word 1
-at_dest:	.word 0
-quad_x: 	.word 0
-quad_y:		.word 0
+have_puzzle:	.word 0	# Do we have a puzzle?
+wait_puzzle:	.word 0	# Are we waiting on a puzzle?
+zero_solution:  .word 1 # Is our solution struct zeroed out?
+at_dest:	.word 0	# Are we done moving?
+quad_x: 	.word 0	# 
+quad_y:		.word 0	# The quadrant we're working in
+max_plant:	.word 0	# The count of plants at max growth
+request_pattern:.word 0x01000000
+request_count:	.word 0
 
 .align 2
 tilearray:	.space 1600
 puzzlestruct:	.space 4096
 solutionstruct: .space 328
+plantarray:	.space 800
 
 .text
 #####
@@ -82,19 +86,28 @@ main:
 	mtc0	$t0, $12
 
 	#TODO:	Write this function
-	#jal	gather_initial
+	jal	gather_initial
 
+	#TODO:	finish main loop
+main_begin:
 	jal	farm_start
-
-	li	$a0, SEED_RESOURCE
+	li	$a0, -1
 	jal	gather
-
 	jal	plant_farm
-loop:
-	j	loop
+main_loop:
+	#TODO:	Write fire checking and extinguishing logic
+main_harvest:
+	lw	$t0, max_plant	#Get a count of the max grown plants
+	beqz	$t0, main_attack
+	sw	$0, max_plant
+	jal	harvest
+	j	main_loop
+main_attack:
+	#TODO:	Write fire gathering and starting logic
+	jal	harvest
+	j	main_loop
 
 	j	main
-
 #################
 #request_resource
 #
@@ -158,6 +171,10 @@ cs_loop:
 #Exits when at_dest is set to 1
 #
 #a0: Resource type to keep gathering
+#    0 = water
+#    1 = seeds
+#    2 = fire starters
+#   -1 = cycle through water and seeds
 #######
 gather:
 	sub	$sp, $sp, 8
@@ -181,11 +198,39 @@ no_puzzle:
 no_solution:
 	bnez	$t2, working
 	lw	$a0, 4($sp)
+	bgez	$a0, g_request
+
+	la	$t0, request_pattern	# Handle resource cycling
+	lw	$t1, request_count
+	add	$t0, $t0, $t1
+	lb	$a0, 0($t0)
+	add	$t1, $t1, 1
+	sw	$t1, request_count
+	ble	$t1, 3, g_request
+	sw	$0, request_count
+
+g_request:
 	jal	request_resource
 	j	working
 g_return:
 	lw	$ra, 0($sp)
 	add	$sp, $sp, 8
+	jr	$ra
+
+gather_initial:
+	sub	$sp, $sp, 4
+	sw	$ra, 0($sp)
+
+	li	$t0, 0
+	sw	$t0, at_dest
+	lw	$t0, TIMER
+	add	$t0, $t0, 500000
+	sw	$t0, TIMER
+	li	$a0, -1
+	jal	gather
+
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 4
 	jr	$ra
 movexy:
 	sub	$sp, $sp, 12
@@ -405,10 +450,10 @@ plant_farm:
 	sub	$a0, $a0, $t0
 	jal	movexy
 
-	li	$a0, WATER_RESOURCE
+	li	$a0, -1
 	jal	gather
 
-	li	$a0, 0
+	li	$a0, 1
 	jal	plant_cross
 	
 pf_return:	
@@ -518,6 +563,59 @@ plant_seed:
 
 
 
+harvest:	
+	sub	$sp, $sp, 4
+	sw	$ra, 0($sp)
+	
+	#TODO:	Write loop that finds max grown tiles
+hrvst_scan_begin:
+	la	$t0, tilearray
+	sw	$t0, TILE_SCAN
+	li	$t1, 0
+hrvst_scan:
+	lw	$t2, 4($t0)
+	bnez	$t2, hrvst_scan_bad_tile
+	lw	$t2, 8($t0)
+	blt	$t2, 512, hrvst_scan_bad_tile
+	j	hrvst_scan_done
+hrvst_scan_bad_tile:
+	add	$t0, $t0, 16
+	add	$t1, $t1, 1
+	blt	$t1, 100, hrvst_scan
+	j	hrvst_return
+hrvst_scan_done:
+	li	$t0, 10
+	div	$t1, $t0
+	mfhi	$t1
+	mflo	$t2
+
+	mul	$t1, $t1, 30
+	add	$a0, $t1, 15	# X pixel coord of plant
+
+	mul	$t2, $t2, 30
+	add	$a1, $t2, 15	# Y pixel coord of plant
+
+	jal	movexy
+
+	li	$a0, -1
+	jal	gather
+
+	sw	$0, HARVEST_TILE	#harvest
+
+	#no checking for seed number here, we take care of that
+	#in the main file
+	sw	$0, SEED_TILE 	#plant
+
+	li	$t0, 10		#water
+	sw	$t0, WATER_TILE
+	j	hrvst_scan_begin
+
+hrvst_return:
+	lw $ra, 0($sp)
+	add $sp, $sp, 4
+
+	jr $ra
+	
 .text
 
 ###########
@@ -1201,6 +1299,9 @@ interrupt_dispatch:
 	and	$a0, $k0, ON_FIRE_MASK
 	bne	$a0, $0, fire_interrupt
 
+	and	$a0, $k0, MAX_GROWTH_INT_MASK
+	bne	$a0, $0, max_growth_interrupt
+
 	and	$a0, $k0, REQUEST_PUZZLE_INT_MASK
 	bne	$a0, $0, puzzle_interrupt
 
@@ -1220,6 +1321,12 @@ fire_interrupt:
 	add	$a1, $a1, $k0
 	lw	$a0, GET_FIRE_LOC
 	sw	$a0, 0($a1)
+	j	interrupt_dispatch
+
+max_growth_interrupt:
+	sw	$0, MAX_GROWTH_ACK
+	li	$a0, 1
+	sw	$a0, max_plant
 	j	interrupt_dispatch
 
 puzzle_interrupt:

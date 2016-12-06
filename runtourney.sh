@@ -1,2 +1,2 @@
 #!/bin/bash
-QtSpimbot -maponly -run -tournament -randommap -largemap -exit_when_done -file main.s -file2 main.s
+QtSpimbot -maponly -run -tournament -randommap -largemap -exit_when_done -file spimbot.s -file2 spimbot2.s

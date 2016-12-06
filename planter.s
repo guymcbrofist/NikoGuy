@@ -61,10 +61,10 @@ plant_farm:
 	sub	$a0, $a0, $t0
 	jal	movexy
 
-	li	$a0, WATER_RESOURCE
+	li	$a0, -1
 	jal	gather
 
-	li	$a0, 0
+	li	$a0, 1
 	jal	plant_cross
 	
 pf_return:	

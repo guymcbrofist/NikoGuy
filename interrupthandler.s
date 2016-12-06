@@ -40,9 +40,8 @@ fire_interrupt:
 
 puzzle_interrupt:
 	sw	$0, REQUEST_PUZZLE_ACK
-	la	$k0, puzzlebit
 	li	$a0, 1
-	sb	$a0, 0($k0)
+	sw	$a0, have_puzzle
 	j	interrupt_dispatch
 
 timer_interrupt:

@@ -53,9 +53,12 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 
 .data
 # data things go here
-puzzlebit:	.word 0
+have_puzzle:	.word 0
+wait_puzzle:	.word 0
+zero_solution:  .word 1
 at_dest:	.word 0
-quad_bits:	.word 0
+quad_x: 	.word 0
+quad_y:		.word 0
 
 .align 2
 tilearray:	.space 1600
@@ -63,6 +66,11 @@ puzzlestruct:	.space 4096
 solutionstruct: .space 328
 
 .text
+#####
+#main
+#
+#Schedules the SpimBOT
+#####
 main:
 	# go wild
 	# the world is your oyster :)
@@ -73,42 +81,42 @@ main:
 	or	$t0, $t0, MAX_GROWTH_INT_MASK
 	mtc0	$t0, $12
 
-	li	$a0, 15
-	li	$a1, 15
-	jal	movexy
+	#TODO:	Write this function
+	#jal	gather_initial
+
+	jal	farm_start
 
 	li	$a0, SEED_RESOURCE
-	jal	request_resource
+	jal	gather
 
+	jal	plant_farm
 loop:
-	lb	$t2, puzzlebit
-	bnez	$t2, go
 	j	loop
-
-go:
-	jal	solve_puzzle
-	jal	clear_solution
-	lb	$t0, at_dest
-	bnez	$t0, leave
-	li	$a0, SEED_RESOURCE
-	jal	request_resource
-	j	loop
-leave:
-	li	$a0, 255
-	li	$a1, 255
-	jal	movexy
-
-loop2:
-	j	loop2
 
 	j	main
 
+#################
+#request_resource
+#
+#Requests a puzzle for a resource
+#There must be no pending puzzles or a solution struct with a solution when this is called
+#
+#$a0: Resource type requested
+#################
 request_resource:
 	sw	$a0, SET_RESOURCE_TYPE
 	la	$a0, puzzlestruct
 	sw	$a0, REQUEST_PUZZLE
+	li	$t0, 1
+	sw	$t0, wait_puzzle
 	jr	$ra
 
+#############
+#solve_puzzle
+#
+#Solves the puzzle
+#There must be a valid puzzle and a zero solution struct when called
+#############
 solve_puzzle:
 	sub	$sp, $sp, 4
 	sw	$ra, 0($sp)
@@ -118,12 +126,18 @@ solve_puzzle:
 	jal	recursive_backtracking
 	la	$t0, solutionstruct
 	sw	$t0, SUBMIT_SOLUTION
-	sw	$0, puzzlebit
+	sw	$0, have_puzzle
+	sw	$0, zero_solution
 
 	lw	$ra, 0($sp)
 	add	$sp, $sp, 4
 	jr	$ra
 
+###############
+#clear_solution
+#
+#Zeroes out the solution struct
+###############
 clear_solution:
 	la	$t1, solutionstruct
 	add	$t0, $t1, 328
@@ -131,11 +145,47 @@ cs_loop:
 	sw	$0, 0($t1)
 	add	$t1, $t1, 4
 	blt	$t1, $t0, cs_loop
+	li	$t0, 1
+	sw	$t0, zero_solution
 	jr	$ra
 
-look_at_enemy:
-	lh	$t0, OTHER_BOT_X
-	lh	$t1, OTHER_BOT_Y
+#######
+#gather
+#
+#Keeps calling for puzzles and solves them
+#Call while moving over more than short distances
+#
+#Exits when at_dest is set to 1
+#
+#a0: Resource type to keep gathering
+#######
+gather:
+	sub	$sp, $sp, 8
+	sw	$ra, 0($sp)
+	sw	$a0, 4($sp)
+working:
+	lw	$t0, at_dest
+	bnez	$t0, g_return
+	lw	$t0, have_puzzle
+	lw	$t1, zero_solution
+	lw	$t2, wait_puzzle
+	beqz	$t0, no_puzzle
+	beqz	$t2, no_puzzle
+	sw	$0, wait_puzzle
+	jal	solve_puzzle
+	j	working
+no_puzzle:
+	bnez	$t1, no_solution
+	jal	clear_solution
+	j	working
+no_solution:
+	bnez	$t2, working
+	lw	$a0, 4($sp)
+	jal	request_resource
+	j	working
+g_return:
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 8
 	jr	$ra
 movexy:
 	sub	$sp, $sp, 12
@@ -174,10 +224,15 @@ movexy:
 
 	jr	$ra
 .data
-.align 2
 three:	.float	3.0
 five:	.float	5.0
-PI:	.float	3.141592
+seven:  .float  7.0
+nine:   .float  9.0
+eleven: .float  11.0
+thirteen: .float 13.0
+fifteen: .float  15.0
+svnteen: .float 17.0
+PI:	.float	3.14159265359
 F180:	.float  180.0
 	
 .text
@@ -218,14 +273,44 @@ pos_x:
 
 	mul.s	$f1, $f0, $f0	# v^^2
 	mul.s	$f2, $f1, $f0	# v^^3
-	l.s	$f3, three	# load 5.0
+	l.s	$f3, three	# load 3.0
 	div.s 	$f3, $f2, $f3	# v^^3/3
 	sub.s	$f6, $f0, $f3	# v - v^^3/3
 
 	mul.s	$f4, $f1, $f2	# v^^5
-	l.s	$f5, five	# load 3.0
+	l.s	$f5, five	# load 5.0
 	div.s 	$f5, $f4, $f5	# v^^5/5
 	add.s	$f6, $f6, $f5	# value = v - v^^3/3 + v^^5/5
+
+	mul.s	$f7, $f1, $f4	# v^^7
+	l.s	$f8, seven	# load 7.0
+	div.s 	$f8, $f7, $f8	# v^^7/7
+	sub.s	$f6, $f6, $f8	# value = v - v^^3/3 + v^^5/5 - v^^7/7
+
+	mul.s	$f10, $f1, $f7	# v^^9
+	l.s	$f11, nine	# load 9.0
+	div.s 	$f11, $f10, $f11	# v^^9/9
+	add.s	$f6, $f6, $f11	# value = v - v^^3/3 + v^^5/5 - v^^7/7 + v^^9/9
+
+	mul.s	$f12, $f1, $f10	# v^^11
+	l.s	$f13, eleven	# load 11.0
+	div.s 	$f13, $f12, $f13	# v^^11/11
+	sub.s	$f6, $f6, $f13	# value = v - v^^3/3 + v^^5/5 - v^^7/7 + v^^9/9 - v^^11/11
+
+	mul.s	$f14, $f1, $f12	# v^^13
+	l.s	$f15, thirteen	# load 13.0
+	div.s 	$f15, $f14, $f15	# v^^13/13
+	add.s	$f6, $f6, $f15	# value = v - v^^3/3 + v^^5/5 - v^^7/7 + v^^9/9 - v^^13/13
+
+	mul.s	$f16, $f1, $f14	# v^^13
+	l.s	$f17, fifteen	# load 13.0
+	div.s 	$f17, $f16, $f17	# v^^13/13
+	sub.s	$f6, $f6, $f17	# value = v - v^^3/3 + v^^5/5 - v^^7/7 + v^^9/9 - v^^13/13
+
+	mul.s	$f18, $f1, $f16	# v^^13
+	l.s	$f19, svnteen	# load 13.0
+	div.s 	$f19, $f18, $f19	# v^^13/13
+	add.s	$f6, $f6, $f19	# value = v - v^^3/3 + v^^5/5 - v^^7/7 + v^^9/9 - v^^13/13
 
 	l.s	$f8, PI		# load PI
 	div.s	$f6, $f6, $f8	# value / PI
@@ -257,6 +342,208 @@ euclidean_dist:
 	mfc1	$v0, $f0
 	jr	$ra
 
+.text
+
+###########
+#farm_start
+#
+#Sends the SpimBOT somewhere to start farming
+#Tries to pick a corner of the map farthest away from other bot
+###########
+farm_start:
+	sub	$sp, $sp, 4
+	sw	$ra, 0($sp)
+	
+	lw	$t0, OTHER_BOT_X
+	lw	$t1, OTHER_BOT_Y
+
+	slti	$t0, $t0, 150	#give us other bot's coords to work with
+	slti	$t1, $t1, 150
+
+	xor	$t0, $t0, 1	#gives us our desired quadrant
+	xor	$t1, $t1, 1
+	sw	$t0, quad_x
+	sw	$t1, quad_y
+	li	$t2, 210
+	li	$t3, 255
+	
+	mul	$a0, $t0, $t2	#desired_x*(210) to get pixel
+	mul	$a1, $t1, $t2	#same with y coord.
+	sub	$a0, $t3, $a0	#s4 = 255 - (desired_x * 210)
+	sub	$a1, $t3, $a1	#s5 = 255 - (desired_y * 210)
+
+	jal	movexy
+
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 4
+	jr	$ra
+
+###########
+#plant_farm
+#
+#Farm planting routine
+#
+###########
+plant_farm:
+	sub	$sp, $sp, 4
+	sw	$ra, 0($sp)
+
+	li	$a0, 1
+	jal	plant_cross
+
+	lw	$s0, quad_x
+	lw	$s1, quad_y
+
+	sub	$s0, $0, $s0
+	or	$s0, $s0, 1		#determine which direction to go in, bit tricks. Has -1 or 1.
+	#sub	$s1, $0, $s1
+	#or	$s1, $s1, 1
+
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	mul	$t0, $s0, 60
+	sub	$a0, $a0, $t0
+	jal	movexy
+
+	li	$a0, WATER_RESOURCE
+	jal	gather
+
+	li	$a0, 0
+	jal	plant_cross
+	
+pf_return:	
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 4
+	jr	$ra
+
+############
+#plant_cross
+#
+#Tells the SpimBOT to plant in a cross pattern
+#
+#a0: Whether SpimBOT should water the center of the cross or not
+#     0: don't water
+#    !0: water
+############
+plant_cross:
+	sub	$sp, $sp, 8
+	sw	$ra, 0($sp)
+	sw	$a0, 4($sp)
+
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	jal	check_tile
+	bnez	$v0, move_up	#if x.state == 0, go check seeds and plant
+	jal	plant_seed
+	
+move_up:
+	sub	$a1, $a1, 30
+	jal	check_tile
+	bnez	$v0, move_down_right
+	jal	movexy		#move up
+up_loop:
+	lw	$t0, at_dest
+	beqz	$t0, up_loop
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	jal	plant_seed
+	
+move_down_right:
+	addi	$a0, $a0, 30
+	addi	$a1, $a1, 30
+	jal	check_tile
+	bnez	$v0, move_down_left
+	jal	movexy
+dr_loop:
+	lw	$t0, at_dest
+	beqz	$t0, dr_loop
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	jal	plant_seed
+
+move_down_left:
+	sub	$a0, $a0, 30
+	addi	$a1, $a1, 30
+	jal	check_tile
+	bnez	$v0, move_up_left
+	jal	movexy
+dl_loop:
+	lw	$t0, at_dest
+	beqz	$t0, dl_loop
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	jal	plant_seed
+
+move_up_left:
+	sub	$a0, $a0, 30
+	sub	$a1, $a1, 30
+	jal	check_tile
+	bnez	$v0, move_right
+	jal	movexy
+ul_loop:
+	lw	$t0, at_dest
+	beqz	$t0, ul_loop
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	jal	plant_seed
+
+move_right:
+	addi	$a0, $a0, 30
+	jal	movexy
+right_loop:
+	lw	$t0, at_dest
+	lw	$a0, BOT_X
+	lw	$a1, BOT_Y
+	beqz	$t0, right_loop
+
+	lw	$a0, 4($sp)
+	beqz	$a0, pc_return
+	li	$t0, 10		# Crop watering time!
+	sw	$t0, WATER_TILE 
+pc_return:
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 8
+	jr	$ra
+
+###########
+#plant_seed
+###########
+plant_seed:
+	sw	$0, SEED_TILE
+
+	la	$t0, tilearray
+	sw	$t0, TILE_SCAN
+	jr	$ra
+	
+
+
+
+.text
+
+check_tile:
+	slt	$t0, $a0, $0
+	slt	$t1, $a1, $0
+	or	$t0, $t0, $t1
+	li	$t2, 300
+	slt	$t1, $t2, $a0
+	or	$t0, $t0, $t1
+	slt	$t1, $t2, $a1
+	or	$t0, $t0, $t1
+	beqz	$t0, valid_tile
+	li	$v0, 1
+	j	ct_return
+valid_tile:
+	div	$t0, $a0, 30
+	div	$t1, $a1, 30
+	
+	mul	$t1, $t1, 10	#y_tile*10 since it is columns
+	add	$t1, $t1, $t0	#to get tile number, add previous statment and x_tile
+	mul	$t1, $t1, 16	#16 is tileStruct size
+	la	$t2, tilearray
+	add	$t2, $t2, $t1 
+	lw	$v0, 0($t2)	#current_tile.state
+ct_return:
+	jr	$ra
 .text
 
 ## struct Cage {
@@ -651,68 +938,58 @@ isvd_zero:
     
 .globl get_domain_for_addition
 get_domain_for_addition:
-
-	sub	$sp, $sp, 20
-	sw	$ra, 0($sp)
-	sw	$s0, 4($sp)
-	sw	$s1, 8($sp)
-	sw	$s2, 12($sp)
-
-	sw	$a0, 16($sp)
-	move	$a0, $a2
-
-	#	convert_highest_bit_to_int(domain)
-	jal	convert_highest_bit_to_int
-
-	neg	$s0, $a2
-	and	$a0, $a2, $s0
-	move	$s0, $v0		# $s0 = upper_bound
-
-	#	convert_highest_bit_to_int(domain & -(domain))
-	jal	convert_highest_bit_to_int
-	# $v0 = lower_bound
-
-	sub	$a1, $a1, 1		# $a1 = num_cell-1
-	mul	$s1, $a1, $v0		# lower_bound * (num_cell-1)
-	lw	$a0, 16($sp)
-	sub	$s1, $a0, $s1		# high_bits = target - lower_bound * (num_cell-1)
-
-	bge	$s1, $s0, gdfa_if1	# !(high_bits < upper_bound)
-
-	li	$s2, 1
-	sllv	$s2, $s2, $s1		# 1 << high_bits
-	sub	$s2, $s2, 1		# (1 << high_bits)-1
-	and	$a2, $a2, $s2		# domain = domain & ((1 << high_bits)-1)
-
-gdfa_if1:
-	mul	$s1, $a1, $s0		# (num_cell-1) * upper_bound
-	sub	$s1, $a0, $s1		# low_bits = target - (num_cell-1) * upper_bound
-
-	blez	$s1, gdfa_if2		# !(low_bits > 0)
-
-	sub	$s1, $s1, 1		# low_bits-1
-	srlv	$a2, $a2, $s1
-	sllv	$a2, $a2, $s1		# domain = (domain >> (low_bits-1)) << (low_bits-1)
-
-gdfa_if2:
-	move	$v0, $a2		# return domain
-
-	lw	$ra, 0($sp)
-	lw	$s0, 4($sp)
-	lw	$s1, 8($sp)
-	lw	$s2, 12($sp)
-	add	$sp, $sp, 20
+	sub    $sp, $sp, 20
+	sw     $ra, 0($sp)
+	sw     $s0, 4($sp)
+	sw     $s1, 8($sp)
+	sw     $s2, 12($sp)
+	sw     $s3, 16($sp)
+	move   $s0, $a0                     # s0 = target
+	move   $s1, $a1                     # s1 = num_cell
+	move   $s2, $a2                     # s2 = domain
 	
-    # We highly recommend that you copy in our 
-    # solution when it is released on Tuesday night 
-    # after the late deadline for Lab7.2
-    #
-    # If you reach this part before Tuesday night,
-    # you can paste your Lab7.2 solution here for now
-
-    # And don't forget to delete the infinite loop :)
-
-    jr     $ra
+	move   $a0, $a2
+	jal    convert_highest_bit_to_int
+	move   $s3, $v0                     # s3 = upper_bound
+	
+	sub    $a0, $0, $s2	                # -domain
+	and    $a0, $a0, $s2                # domain & (-domain)
+	jal    convert_highest_bit_to_int   # v0 = lower_bound
+	       
+	sub    $t0, $s1, 1                  # num_cell - 1
+	mul    $t0, $t0, $v0                # (num_cell - 1) * lower_bound
+	sub    $t0, $s0, $t0                # t0 = high_bits
+	bge    $t0, 0, gdfa_skip0
+	
+	li     $t0, 0
+	
+	gdfa_skip0:
+	bge    $t0, $s3, gdfa_skip1
+	
+	li     $t1, 1          
+	sll    $t0, $t1, $t0                # 1 << high_bits
+	sub    $t0, $t0, 1                  # (1 << high_bits) - 1
+	and    $s2, $s2, $t0                # domain & ((1 << high_bits) - 1)
+	
+	gdfa_skip1:	   
+	sub    $t0, $s1, 1                  # num_cell - 1
+	mul    $t0, $t0, $s3                # (num_cell - 1) * upper_bound
+	sub    $t0, $s0, $t0                # t0 = low_bits
+	ble    $t0, $0, gdfa_skip2
+	
+	sub    $t0, $t0, 1                  # low_bits - 1
+	sra    $s2, $s2, $t0                # domain >> (low_bits - 1)
+	sll    $s2, $s2, $t0                # domain >> (low_bits - 1) << (low_bits - 1)
+	
+	gdfa_skip2:	   
+	move   $v0, $s2                     # return domain
+	lw     $ra, 0($sp)
+	lw     $s0, 4($sp)
+	lw     $s1, 8($sp)
+	lw     $s2, 12($sp)
+	lw     $s3, 16($sp)
+	add    $sp, $sp, 20
+	jr     $ra
 
 .globl get_domain_for_subtraction
 get_domain_for_subtraction:
@@ -938,9 +1215,8 @@ fire_interrupt:
 
 puzzle_interrupt:
 	sw	$0, REQUEST_PUZZLE_ACK
-	la	$k0, puzzlebit
 	li	$a0, 1
-	sb	$a0, 0($k0)
+	sw	$a0, have_puzzle
 	j	interrupt_dispatch
 
 timer_interrupt:

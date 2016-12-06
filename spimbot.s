@@ -53,9 +53,12 @@ REQUEST_PUZZLE_INT_MASK = 0x800
 
 .data
 # data things go here
-puzzlebit:	.word 0
+have_puzzle:	.word 0
+wait_puzzle:	.word 0
+zero_solution:  .word 1
 at_dest:	.word 0
-quad_bits:	.word 0
+quad_x: 	.word 0
+quad_y:		.word 0
 
 .align 2
 tilearray:	.space 1600
@@ -63,6 +66,11 @@ puzzlestruct:	.space 4096
 solutionstruct: .space 328
 
 .text
+#####
+#main
+#
+#Schedules the SpimBOT
+#####
 main:
 	# go wild
 	# the world is your oyster :)
@@ -73,42 +81,42 @@ main:
 	or	$t0, $t0, MAX_GROWTH_INT_MASK
 	mtc0	$t0, $12
 
-	li	$a0, 15
-	li	$a1, 15
-	jal	movexy
+	#TODO:	Write this function
+	#jal	gather_initial
+
+	jal	farm_start
 
 	li	$a0, SEED_RESOURCE
-	jal	request_resource
+	jal	gather
 
+	jal	plant_farm
 loop:
-	lb	$t2, puzzlebit
-	bnez	$t2, go
 	j	loop
-
-go:
-	jal	solve_puzzle
-	jal	clear_solution
-	lb	$t0, at_dest
-	bnez	$t0, leave
-	li	$a0, SEED_RESOURCE
-	jal	request_resource
-	j	loop
-leave:
-	li	$a0, 255
-	li	$a1, 255
-	jal	movexy
-
-loop2:
-	j	loop2
 
 	j	main
 
+#################
+#request_resource
+#
+#Requests a puzzle for a resource
+#There must be no pending puzzles or a solution struct with a solution when this is called
+#
+#$a0: Resource type requested
+#################
 request_resource:
 	sw	$a0, SET_RESOURCE_TYPE
 	la	$a0, puzzlestruct
 	sw	$a0, REQUEST_PUZZLE
+	li	$t0, 1
+	sw	$t0, wait_puzzle
 	jr	$ra
 
+#############
+#solve_puzzle
+#
+#Solves the puzzle
+#There must be a valid puzzle and a zero solution struct when called
+#############
 solve_puzzle:
 	sub	$sp, $sp, 4
 	sw	$ra, 0($sp)
@@ -118,12 +126,18 @@ solve_puzzle:
 	jal	recursive_backtracking
 	la	$t0, solutionstruct
 	sw	$t0, SUBMIT_SOLUTION
-	sw	$0, puzzlebit
+	sw	$0, have_puzzle
+	sw	$0, zero_solution
 
 	lw	$ra, 0($sp)
 	add	$sp, $sp, 4
 	jr	$ra
 
+###############
+#clear_solution
+#
+#Zeroes out the solution struct
+###############
 clear_solution:
 	la	$t1, solutionstruct
 	add	$t0, $t1, 328
@@ -131,9 +145,45 @@ cs_loop:
 	sw	$0, 0($t1)
 	add	$t1, $t1, 4
 	blt	$t1, $t0, cs_loop
+	li	$t0, 1
+	sw	$t0, zero_solution
 	jr	$ra
 
-look_at_enemy:
-	lh	$t0, OTHER_BOT_X
-	lh	$t1, OTHER_BOT_Y
+#######
+#gather
+#
+#Keeps calling for puzzles and solves them
+#Call while moving over more than short distances
+#
+#Exits when at_dest is set to 1
+#
+#a0: Resource type to keep gathering
+#######
+gather:
+	sub	$sp, $sp, 8
+	sw	$ra, 0($sp)
+	sw	$a0, 4($sp)
+working:
+	lw	$t0, at_dest
+	bnez	$t0, g_return
+	lw	$t0, have_puzzle
+	lw	$t1, zero_solution
+	lw	$t2, wait_puzzle
+	beqz	$t0, no_puzzle
+	beqz	$t2, no_puzzle
+	sw	$0, wait_puzzle
+	jal	solve_puzzle
+	j	working
+no_puzzle:
+	bnez	$t1, no_solution
+	jal	clear_solution
+	j	working
+no_solution:
+	bnez	$t2, working
+	lw	$a0, 4($sp)
+	jal	request_resource
+	j	working
+g_return:
+	lw	$ra, 0($sp)
+	add	$sp, $sp, 8
 	jr	$ra

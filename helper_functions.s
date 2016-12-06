@@ -37,68 +37,58 @@ isvd_zero:
     
 .globl get_domain_for_addition
 get_domain_for_addition:
-
-	sub	$sp, $sp, 20
-	sw	$ra, 0($sp)
-	sw	$s0, 4($sp)
-	sw	$s1, 8($sp)
-	sw	$s2, 12($sp)
-
-	sw	$a0, 16($sp)
-	move	$a0, $a2
-
-	#	convert_highest_bit_to_int(domain)
-	jal	convert_highest_bit_to_int
-
-	neg	$s0, $a2
-	and	$a0, $a2, $s0
-	move	$s0, $v0		# $s0 = upper_bound
-
-	#	convert_highest_bit_to_int(domain & -(domain))
-	jal	convert_highest_bit_to_int
-	# $v0 = lower_bound
-
-	sub	$a1, $a1, 1		# $a1 = num_cell-1
-	mul	$s1, $a1, $v0		# lower_bound * (num_cell-1)
-	lw	$a0, 16($sp)
-	sub	$s1, $a0, $s1		# high_bits = target - lower_bound * (num_cell-1)
-
-	bge	$s1, $s0, gdfa_if1	# !(high_bits < upper_bound)
-
-	li	$s2, 1
-	sllv	$s2, $s2, $s1		# 1 << high_bits
-	sub	$s2, $s2, 1		# (1 << high_bits)-1
-	and	$a2, $a2, $s2		# domain = domain & ((1 << high_bits)-1)
-
-gdfa_if1:
-	mul	$s1, $a1, $s0		# (num_cell-1) * upper_bound
-	sub	$s1, $a0, $s1		# low_bits = target - (num_cell-1) * upper_bound
-
-	blez	$s1, gdfa_if2		# !(low_bits > 0)
-
-	sub	$s1, $s1, 1		# low_bits-1
-	srlv	$a2, $a2, $s1
-	sllv	$a2, $a2, $s1		# domain = (domain >> (low_bits-1)) << (low_bits-1)
-
-gdfa_if2:
-	move	$v0, $a2		# return domain
-
-	lw	$ra, 0($sp)
-	lw	$s0, 4($sp)
-	lw	$s1, 8($sp)
-	lw	$s2, 12($sp)
-	add	$sp, $sp, 20
+	sub    $sp, $sp, 20
+	sw     $ra, 0($sp)
+	sw     $s0, 4($sp)
+	sw     $s1, 8($sp)
+	sw     $s2, 12($sp)
+	sw     $s3, 16($sp)
+	move   $s0, $a0                     # s0 = target
+	move   $s1, $a1                     # s1 = num_cell
+	move   $s2, $a2                     # s2 = domain
 	
-    # We highly recommend that you copy in our 
-    # solution when it is released on Tuesday night 
-    # after the late deadline for Lab7.2
-    #
-    # If you reach this part before Tuesday night,
-    # you can paste your Lab7.2 solution here for now
-
-    # And don't forget to delete the infinite loop :)
-
-    jr     $ra
+	move   $a0, $a2
+	jal    convert_highest_bit_to_int
+	move   $s3, $v0                     # s3 = upper_bound
+	
+	sub    $a0, $0, $s2	                # -domain
+	and    $a0, $a0, $s2                # domain & (-domain)
+	jal    convert_highest_bit_to_int   # v0 = lower_bound
+	       
+	sub    $t0, $s1, 1                  # num_cell - 1
+	mul    $t0, $t0, $v0                # (num_cell - 1) * lower_bound
+	sub    $t0, $s0, $t0                # t0 = high_bits
+	bge    $t0, 0, gdfa_skip0
+	
+	li     $t0, 0
+	
+	gdfa_skip0:
+	bge    $t0, $s3, gdfa_skip1
+	
+	li     $t1, 1          
+	sll    $t0, $t1, $t0                # 1 << high_bits
+	sub    $t0, $t0, 1                  # (1 << high_bits) - 1
+	and    $s2, $s2, $t0                # domain & ((1 << high_bits) - 1)
+	
+	gdfa_skip1:	   
+	sub    $t0, $s1, 1                  # num_cell - 1
+	mul    $t0, $t0, $s3                # (num_cell - 1) * upper_bound
+	sub    $t0, $s0, $t0                # t0 = low_bits
+	ble    $t0, $0, gdfa_skip2
+	
+	sub    $t0, $t0, 1                  # low_bits - 1
+	sra    $s2, $s2, $t0                # domain >> (low_bits - 1)
+	sll    $s2, $s2, $t0                # domain >> (low_bits - 1) << (low_bits - 1)
+	
+	gdfa_skip2:	   
+	move   $v0, $s2                     # return domain
+	lw     $ra, 0($sp)
+	lw     $s0, 4($sp)
+	lw     $s1, 8($sp)
+	lw     $s2, 12($sp)
+	lw     $s3, 16($sp)
+	add    $sp, $sp, 20
+	jr     $ra
 
 .globl get_domain_for_subtraction
 get_domain_for_subtraction:
